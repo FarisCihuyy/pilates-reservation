@@ -1,0 +1,182 @@
+.PHONY: help run build test clean migrate seed docker-up docker-down
+
+# Variables
+APP_NAME=pilates-api
+MAIN_PATH=cmd/server/main.go
+BUILD_DIR=bin
+GO=go
+GOFLAGS=-v
+
+# Default target
+help: ## Show this help message
+	@echo "📋 Available commands:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+# Development
+run: ## Run the application in development mode
+	@echo "🚀 Starting server..."
+	$(GO) run $(MAIN_PATH)
+
+dev: ## Run with hot reload (requires air)
+	@echo "🔥 Starting with hot reload..."
+	air
+
+# Build
+build: ## Build the application
+	@echo "🔨 Building $(APP_NAME)..."
+	@mkdir -p $(BUILD_DIR)
+	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/$(APP_NAME) $(MAIN_PATH)
+	@echo "✅ Build complete: $(BUILD_DIR)/$(APP_NAME)"
+
+build-linux: ## Build for Linux
+	@echo "🐧 Building for Linux..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BUILD_DIR)/$(APP_NAME)-linux $(MAIN_PATH)
+	@echo "✅ Linux build complete"
+
+build-windows: ## Build for Windows
+	@echo "🪟 Building for Windows..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=windows GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BUILD_DIR)/$(APP_NAME).exe $(MAIN_PATH)
+	@echo "✅ Windows build complete"
+
+build-mac: ## Build for macOS
+	@echo "🍎 Building for macOS..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=darwin GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BUILD_DIR)/$(APP_NAME)-mac $(MAIN_PATH)
+	@echo "✅ macOS build complete"
+
+build-all: build-linux build-windows build-mac ## Build for all platforms
+	@echo "✅ All builds complete"
+
+# Testing
+test: ## Run tests
+	@echo "🧪 Running tests..."
+	$(GO) test -v ./...
+
+test-coverage: ## Run tests with coverage
+	@echo "📊 Running tests with coverage..."
+	$(GO) test -v -coverprofile=coverage.out ./...
+	$(GO) tool cover -html=coverage.out -o coverage.html
+	@echo "✅ Coverage report: coverage.html"
+
+# Database
+db-create: ## Create database
+	@echo "🗄️ Creating database..."
+	psql -U postgres -c "CREATE DATABASE pilates_db;"
+	@echo "✅ Database created"
+
+db-drop: ## Drop database
+	@echo "🗑️ Dropping database..."
+	psql -U postgres -c "DROP DATABASE IF EXISTS pilates_db;"
+	@echo "✅ Database dropped"
+
+db-reset: db-drop db-create ## Reset database (drop and create)
+	@echo "✅ Database reset complete"
+
+migrate: ## Run migrations
+	@echo "🔄 Running migrations..."
+	$(GO) run $(MAIN_PATH)
+
+seed: ## Seed database
+	@echo "🌱 Seeding database..."
+	@# Seeding happens automatically on startup
+
+# Docker
+docker-build: ## Build Docker image
+	@echo "🐳 Building Docker image..."
+	docker build -t $(APP_NAME):latest .
+	@echo "✅ Docker image built"
+
+docker-run: ## Run Docker container
+	@echo "🐳 Running Docker container..."
+	docker run -p 8080:8080 --env-file .env $(APP_NAME):latest
+
+docker-up: ## Start services with docker-compose
+	@echo "🐳 Starting services..."
+	docker-compose up -d
+	@echo "✅ Services started"
+
+docker-down: ## Stop services with docker-compose
+	@echo "🛑 Stopping services..."
+	docker-compose down
+	@echo "✅ Services stopped"
+
+docker-logs: ## View docker logs
+	docker-compose logs -f
+
+# Dependencies
+deps: ## Download dependencies
+	@echo "📦 Downloading dependencies..."
+	$(GO) mod download
+	@echo "✅ Dependencies downloaded"
+
+deps-tidy: ## Tidy dependencies
+	@echo "🧹 Tidying dependencies..."
+	$(GO) mod tidy
+	@echo "✅ Dependencies tidied"
+
+deps-update: ## Update dependencies
+	@echo "⬆️ Updating dependencies..."
+	$(GO) get -u ./...
+	$(GO) mod tidy
+	@echo "✅ Dependencies updated"
+
+# Cleaning
+clean: ## Clean build artifacts
+	@echo "🧹 Cleaning..."
+	rm -rf $(BUILD_DIR)
+	rm -f coverage.out coverage.html
+	@echo "✅ Clean complete"
+
+clean-all: clean ## Clean everything including dependencies
+	@echo "🧹 Deep cleaning..."
+	$(GO) clean -modcache
+	@echo "✅ Deep clean complete"
+
+# Code quality
+fmt: ## Format code
+	@echo "✨ Formatting code..."
+	$(GO) fmt ./...
+	@echo "✅ Code formatted"
+
+lint: ## Run linter
+	@echo "🔍 Running linter..."
+	golangci-lint run
+	@echo "✅ Linting complete"
+
+vet: ## Run go vet
+	@echo "🔍 Running go vet..."
+	$(GO) vet ./...
+	@echo "✅ Vet complete"
+
+# Installation
+install-tools: ## Install development tools
+	@echo "🔧 Installing development tools..."
+	go install github.com/cosmtrek/air@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@echo "✅ Tools installed"
+
+# Production
+prod-build: ## Build for production
+	@echo "🏭 Building for production..."
+	@mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=0 GOOS=linux $(GO) build -a -installsuffix cgo -ldflags="-w -s" -o $(BUILD_DIR)/$(APP_NAME) $(MAIN_PATH)
+	@echo "✅ Production build complete"
+
+# Quick commands
+start: run ## Alias for run
+stop: ## Stop running processes
+	@echo "🛑 Stopping..."
+	@pkill -f $(APP_NAME) || true
+	@echo "✅ Stopped"
+
+restart: stop run ## Restart the application
+
+# Information
+info: ## Show project information
+	@echo "📋 Project Information"
+	@echo "  Name: $(APP_NAME)"
+	@echo "  Go Version: $(shell $(GO) version)"
+	@echo "  Build Dir: $(BUILD_DIR)"
+	@echo "  Main Path: $(MAIN_PATH)"
